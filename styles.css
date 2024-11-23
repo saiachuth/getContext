@@ -1,0 +1,184 @@
+/* Global styles */
+:root {
+  --primary-color: #2563eb;
+  --background-color: #ffffff;
+  --text-color: #1f2937;
+  --border-color: #e5e7eb;
+}
+
+/* Popup styles */
+.popup-container {
+  width: 300px;
+  padding: 16px;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.popup-container h2 {
+  margin: 0 0 16px;
+  color: var(--text-color);
+  font-size: 18px;
+}
+
+.api-key-section {
+  margin-bottom: 16px;
+}
+
+.model-select {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: white;
+}
+
+input[type="password"] {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+}
+
+button {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  width: 100%;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+/* Floating button */
+.gpt-floating-button {
+  position: fixed;
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  z-index: 2147483647;
+  transition: transform 0.2s;
+}
+
+.gpt-floating-button:hover {
+  transform: scale(1.1);
+}
+
+/* Popup UI */
+.gpt-popup {
+  position: fixed;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  padding: 16px;
+  width: 300px;
+  z-index: 2147483647;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.gpt-popup-header {
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text-color);
+  padding-right: 24px;
+}
+
+.gpt-popup-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #666;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  width: auto;
+}
+
+.gpt-popup-close:hover {
+  color: #333;
+}
+
+.gpt-popup-textarea {
+  width: 100%;
+  padding: 8px;
+  margin: 8px 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  resize: vertical;
+  min-height: 60px;
+  font-family: inherit;
+  box-sizing: border-box;
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.gpt-popup-button {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.gpt-popup-button:hover {
+  opacity: 0.9;
+}
+
+.gpt-response {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.loading::after {
+  content: "";
+  width: 20px;
+  height: 20px;
+  border: 2px solid #ddd;
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.gpt-popup * {
+  box-sizing: border-box;
+}
