@@ -8,40 +8,77 @@ function createPopup(x, y) {
 
   popup = document.createElement("div");
   popup.className = "gpt-popup";
-
-  const rect = {
-    right: window.innerWidth,
-    bottom: window.innerHeight,
-  };
-
-  let left = Math.min(x, rect.right - 320);
-  let top = Math.min(y + 20, rect.bottom - 200);
-
+  
+  // Position setup
+  let left = Math.min(x, window.innerWidth - 320);
+  let top = Math.min(y + 20, window.innerHeight - 200);
+  
   popup.style.left = `${left}px`;
   popup.style.top = `${top}px`;
+  popup.style.position = "fixed";
 
-  const content = `
+  // Add content
+  popup.innerHTML = `
     <button class="gpt-popup-close">×</button>
     <div class="gpt-popup-header">Ask about the selected text</div>
     <textarea class="gpt-popup-textarea" placeholder="Type your question here..." rows="3"></textarea>
     <button class="gpt-popup-button">Ask AI</button>
   `;
 
-  popup.innerHTML = content;
   document.body.appendChild(popup);
 
+  // Drag functionality
+  let isDragging = false;
+  let currentX;
+  let currentY;
+  let initialX;
+  let initialY;
+
+  const header = popup.querySelector(".gpt-popup-header");
+  
+  header.addEventListener("mousedown", (e) => {
+    isDragging = true;
+    initialX = e.clientX - popup.offsetLeft;
+    initialY = e.clientY - popup.offsetTop;
+    
+    popup.style.cursor = "move";
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (!isDragging) return;
+    
+    e.preventDefault();
+    currentX = e.clientX - initialX;
+    currentY = e.clientY - initialY;
+
+    // Boundary checks
+    currentX = Math.max(0, Math.min(currentX, window.innerWidth - popup.offsetWidth));
+    currentY = Math.max(0, Math.min(currentY, window.innerHeight - popup.offsetHeight));
+
+    popup.style.left = `${currentX}px`;
+    popup.style.top = `${currentY}px`;
+  });
+
+  document.addEventListener("mouseup", () => {
+    isDragging = false;
+    popup.style.cursor = "default";
+  });
+
+  // Rest of the popup functionality
   const closeBtn = popup.querySelector(".gpt-popup-close");
   const askBtn = popup.querySelector(".gpt-popup-button");
   const textarea = popup.querySelector(".gpt-popup-textarea");
 
-  closeBtn.addEventListener("click", removeExistingElements);
+  closeBtn.addEventListener("click", () => {
+    removeExistingElements();
+    removeHighlight();
+  });
 
   askBtn.addEventListener("click", async () => {
     const question = textarea.value.trim();
     if (!question) return;
 
-    const responseDiv =
-      popup.querySelector(".gpt-response") || document.createElement("div");
+    const responseDiv = popup.querySelector(".gpt-response") || document.createElement("div");
     responseDiv.className = "gpt-response";
     responseDiv.innerHTML = '<div class="loading"></div>';
 
@@ -50,6 +87,14 @@ function createPopup(x, y) {
     }
 
     try {
+      // Check if we have selected text
+      if (!selectedText) {
+        throw new Error("No text selected. Please select text first.");
+      }
+      
+      console.log("Selected text:", selectedText); // Debug log
+      console.log("Question:", question); // Debug log
+      
       const response = await askAI(selectedText, question);
       responseDiv.textContent = response;
     } catch (error) {
@@ -58,7 +103,6 @@ function createPopup(x, y) {
   });
 
   setTimeout(() => textarea.focus(), 100);
-
   return popup;
 }
 
@@ -82,6 +126,12 @@ function createFloatingButton(x, y) {
 
 function removeExistingElements() {
   if (popup) {
+    const header = popup.querySelector(".gpt-popup-header");
+    if (header) {
+      header.removeEventListener("mousedown", null);
+    }
+    document.removeEventListener("mousemove", null);
+    document.removeEventListener("mouseup", null);
     popup.remove();
     popup = null;
   }
@@ -224,14 +274,16 @@ async function askArli(context, question, apiKey) {
 
 document.addEventListener("mouseup", (event) => {
   const selection = window.getSelection();
-  selectedText = selection.toString().trim();
-
-  if (selectedText && !event.target.closest(".gpt-popup")) {
-    const range = selection.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
-    const x = rect.left + window.scrollX;
-    const y = rect.top + window.scrollY;
-    createFloatingButton(x, y);
+  if (selection) {
+    selectedText = selection.toString().trim();
+    
+    if (selectedText && !event.target.closest(".gpt-popup")) {
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      const x = rect.left + window.scrollX;
+      const y = rect.top + window.scrollY;
+      createFloatingButton(x, y);
+    }
   }
 });
 

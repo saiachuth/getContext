@@ -1,40 +1,164 @@
 let floatingButton = null;
 let popup = null;
 let selectedText = "";
+let selectedRange = null;
 
-// Create and initialize popup
+function createHighlight(selection) {
+  try {
+    selectedRange = selection.getRangeAt(0).cloneRange();
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+
+    // Create a single highlight overlay
+    const highlight = document.createElement('div');
+    highlight.className = 'text-highlight';
+    highlight.style.position = 'absolute';
+    highlight.style.left = `${rect.left + window.scrollX}px`;
+    highlight.style.top = `${rect.top + window.scrollY}px`;
+    highlight.style.width = `${rect.width}px`;
+    highlight.style.height = `${rect.height}px`;
+    highlight.style.pointerEvents = 'none';
+    
+    document.body.appendChild(highlight);
+    
+    return rect;
+  } catch (e) {
+    console.error("Highlight error:", e);
+    return selection.getRangeAt(0).getBoundingClientRect();
+  }
+}
+
+function removeHighlight() {
+  const highlights = document.querySelectorAll('.text-highlight');
+  highlights.forEach(highlight => highlight.remove());
+}
+
+// Update the mouseup event listener
+document.addEventListener("mouseup", (event) => {
+  const selection = window.getSelection();
+  if (selection && !event.target.closest(".gpt-popup")) {
+    const text = selection.toString().trim();
+    if (text) {
+      selectedText = text;
+      console.log("Text selected:", selectedText); // Debug log
+      const rect = createHighlight(selection);
+      const x = rect.left + window.scrollX;
+      const y = rect.top + window.scrollY;
+      createFloatingButton(x, y);
+    }
+  }
+});
+
+// Update the message listener for right-click
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "showPopup" && request.text) {
+    selectedText = request.text;
+    const selection = window.getSelection();
+    if (selection.rangeCount > 0) {
+      const rect = createHighlight(selection);
+      const x = rect.left + window.scrollX;
+      const y = rect.top + window.scrollY;
+
+      // Add a small delay to ensure highlight is created before popup
+      setTimeout(() => {
+        createPopup(x, y);
+      }, 50);
+    }
+  }
+});
+
+// Handle clicks outside
+document.addEventListener("mousedown", (event) => {
+  if (
+    !event.target.closest(".gpt-popup") &&
+    !event.target.closest(".gpt-floating-button")
+  ) {
+    removeHighlight();
+    removeExistingElements();
+  }
+});
+
+// Add this function if it's not already in content.js
 function createPopup(x, y) {
-  // Remove any existing popups first
   removeExistingElements();
+  // Store the selected text immediately when creating popup
+  const selection = window.getSelection();
+  if (selection && selection.toString().trim()) {
+    selectedText = selection.toString().trim();
+  }
 
   popup = document.createElement("div");
   popup.className = "gpt-popup";
 
-  // Set initial position
-  const rect = {
-    right: window.innerWidth,
-    bottom: window.innerHeight,
-  };
+  popup.dataset.selectedText = selectedText;
 
-  // Calculate position to ensure popup stays in viewport
-  let left = Math.min(x, rect.right - 320); // 320px = popup width + padding
-  let top = Math.min(y + 20, rect.bottom - 200); // 200px = approximate max height
+  // Calculate position to keep popup within viewport
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const popupWidth = 320;
+  const popupHeight = 200; // Approximate initial height
+
+  let left = Math.min(Math.max(x, 10), viewportWidth - popupWidth - 10);
+  let top = Math.min(Math.max(y, 10), viewportHeight - popupHeight - 10);
 
   popup.style.left = `${left}px`;
   popup.style.top = `${top}px`;
 
-  // Create popup content
   const content = `
     <button class="gpt-popup-close">×</button>
-    <div class="gpt-popup-header">Ask about the selected text</div>
-    <textarea class="gpt-popup-textarea" placeholder="Type your question here..." rows="3"></textarea>
-    <button class="gpt-popup-button">Ask GPT</button>
+    <div class="gpt-popup-header">Ask AI Assistant</div>
+    <textarea class="gpt-popup-textarea" placeholder="Ask a question about the selected text..." rows="3"></textarea>
+    <button class="gpt-popup-button">Ask AI</button>
   `;
 
   popup.innerHTML = content;
   document.body.appendChild(popup);
 
-  // Add event listeners
+  // Add dragging functionality
+  const header = popup.querySelector(".gpt-popup-header");
+  let isDragging = false;
+  let currentX;
+  let currentY;
+  let initialX;
+  let initialY;
+
+  header.addEventListener("mousedown", dragStart);
+  document.addEventListener("mousemove", drag);
+  document.addEventListener("mouseup", dragEnd);
+
+  function dragStart(e) {
+    initialX = e.clientX - popup.offsetLeft;
+    initialY = e.clientY - popup.offsetTop;
+    if (e.target === header) {
+      isDragging = true;
+    }
+  }
+
+  function drag(e) {
+    if (isDragging) {
+      e.preventDefault();
+      currentX = e.clientX - initialX;
+      currentY = e.clientY - initialY;
+
+      // Keep popup within viewport bounds
+      currentX = Math.min(
+        Math.max(currentX, 0),
+        viewportWidth - popup.offsetWidth
+      );
+      currentY = Math.min(
+        Math.max(currentY, 0),
+        viewportHeight - popup.offsetHeight
+      );
+
+      popup.style.left = `${currentX}px`;
+      popup.style.top = `${currentY}px`;
+    }
+  }
+
+  function dragEnd() {
+    isDragging = false;
+  }
+
   const closeBtn = popup.querySelector(".gpt-popup-close");
   const askBtn = popup.querySelector(".gpt-popup-button");
   const textarea = popup.querySelector(".gpt-popup-textarea");
@@ -44,6 +168,9 @@ function createPopup(x, y) {
   askBtn.addEventListener("click", async () => {
     const question = textarea.value.trim();
     if (!question) return;
+
+    // Get the selected text from the popup's data attribute
+    const popupSelectedText = popup.dataset.selectedText;
 
     const responseDiv =
       popup.querySelector(".gpt-response") || document.createElement("div");
@@ -55,35 +182,21 @@ function createPopup(x, y) {
     }
 
     try {
-      const response = await askGPT(selectedText, question);
+      if (!popupSelectedText) {
+        throw new Error("No text selected. Please select some text first.");
+      }
+
+      console.log("Using selected text:", popupSelectedText); // Debug log
+      const response = await askAI(popupSelectedText, question);
       responseDiv.textContent = response;
     } catch (error) {
       responseDiv.textContent = "Error: " + error.message;
+      console.error("AI request error:", error);
     }
   });
 
-  // Focus the textarea
   setTimeout(() => textarea.focus(), 100);
-
   return popup;
-}
-
-function createFloatingButton(x, y) {
-  removeExistingElements();
-
-  floatingButton = document.createElement("button");
-  floatingButton.className = "gpt-floating-button";
-  floatingButton.innerHTML = "💡";
-  floatingButton.style.left = `${x}px`;
-  floatingButton.style.top = `${y}px`;
-
-  floatingButton.addEventListener("click", (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    createPopup(x, y);
-  });
-
-  document.body.appendChild(floatingButton);
 }
 
 function removeExistingElements() {
@@ -97,188 +210,71 @@ function removeExistingElements() {
   }
 }
 
-async function askGPT(context, question) {
-  try {
-    const apiKey = await chrome.storage.sync.get([
-      "modelProvider",
-      "anthropicApiKey",
-      "openaiApiKey",
-      "arliApiKey",
-    ]);
-    const modelProvider = apiKey.modelProvider || "claude";
+async function askAI(context, question) {
+  const settings = await chrome.storage.sync.get([
+    "modelProvider",
+    "anthropicApiKey",
+    "openaiApiKey",
+    "arliApiKey",
+  ]);
 
-    if (modelProvider === "claude") {
-      if (!apiKey.anthropicApiKey) {
-        throw new Error(
-          "Please set your Anthropic API key in the extension popup"
-        );
-      }
+  const provider = settings.modelProvider || "claude";
 
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey.anthropicApiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-3-sonnet-20240229",
-          messages: [
-            {
-              role: "user",
-              content: `Context: "${context}"\n\nQuestion: ${question}`,
-            },
-          ],
-          max_tokens: 150,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(
-          errorData.error?.message || `Claude API error: ${response.status}`
-        );
-      }
-
-      const data = await response.json();
-      return data.content[0].text;
-    } else if (modelProvider === "arli") {
-      if (!apiKey.arliApiKey) {
-        throw new Error(
-          "Please set your Arli AI API key in the extension popup"
-        );
-      }
-      const response = await fetch(
-        "https://api.arliai.com/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey.arliApiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "Meta-Llama-3.1-8B-Instruct",
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are a helpful assistant that provides concise and accurate information about user queries based on the given context.",
-              },
-              {
-                role: "user",
-                content: `Context: "${context}"\n\nQuestion: ${question}`,
-              },
-            ],
-            repetition_penalty: 1.1,
-            temperature: 0.7,
-            top_p: 0.9,
-            top_k: 40,
-            max_tokens: 150,
-            stream: false,
-          }),
-        }
+  if (provider === "claude") {
+    if (!settings.anthropicApiKey) {
+      throw new Error(
+        "Please set your Anthropic API key in the extension popup"
       );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(
-          errorData.error?.message || `Arli AI API error: ${response.status}`
-        );
-      }
-
-      const data = await response.json();
-      return data.choices[0].message.content;
-    } else {
-      if (!apiKey.openaiApiKey) {
-        throw new Error(
-          "Please set your OpenAI API key in the extension popup"
-        );
-      }
-
-      const response = await fetch(
-        "https://api.openai.com/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey.openaiApiKey}`,
-          },
-          body: JSON.stringify({
-            model: "gpt-3.5-turbo",
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are a helpful assistant that provides concise and accurate information about user queries based on the given context.",
-              },
-              {
-                role: "user",
-                content: `Context: "${context}"\n\nQuestion: ${question}`,
-              },
-            ],
-            max_tokens: 150,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(
-          errorData.error?.message || `OpenAI API error: ${response.status}`
-        );
-      }
-
-      const data = await response.json();
-      return data.choices[0].message.content;
     }
-  } catch (error) {
-    if (error.name === "TypeError" && error.message.includes("fetch")) {
-      throw new Error("Network error: Please check your internet connection");
+    return askClaude(context, question, settings.anthropicApiKey);
+  } else if (provider === "arli") {
+    if (!settings.arliApiKey) {
+      throw new Error("Please set your Arli AI API key in the extension popup");
     }
-    throw error;
+    return askArli(context, question, settings.arliApiKey);
+  } else {
+    if (!settings.openaiApiKey) {
+      throw new Error("Please set your OpenAI API key in the extension popup");
+    }
+    return askGPT(context, question, settings.openaiApiKey);
   }
 }
 
-// Handle text selection
-document.addEventListener("mouseup", (event) => {
-  // Ignore if clicking inside the popup
-  if (event.target.closest(".gpt-popup")) {
-    return;
+async function askArli(context, question, apiKey) {
+  const response = await fetch("https://api.arliai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "Meta-Llama-3.1-8B-Instruct",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a helpful assistant that provides concise and accurate information about user queries based on the given context.",
+        },
+        {
+          role: "user",
+          content: `Context: "${context}"\n\nQuestion: ${question}`,
+        },
+      ],
+      repetition_penalty: 1.1,
+      temperature: 0.7,
+      top_p: 0.9,
+      top_k: 40,
+      max_tokens: 150,
+      stream: false,
+    }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(
+      data.error?.message || "Failed to get response from Arli AI"
+    );
   }
 
-  const selection = window.getSelection();
-  const text = selection.toString().trim();
-
-  // Only show floating button if there's a valid selection
-  if (text.length > 0) {
-    selectedText = text;
-    const range = selection.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
-    const x = rect.left + window.scrollX;
-    const y = rect.top + window.scrollY;
-    createFloatingButton(x, y);
-  } else {
-    removeExistingElements();
-  }
-});
-
-// Add click handler for document to remove elements when clicking outside
-document.addEventListener("click", (event) => {
-  if (
-    !event.target.closest(".gpt-popup") &&
-    !event.target.closest(".gpt-floating-button")
-  ) {
-    removeExistingElements();
-  }
-});
-
-// Listen for messages from the background script
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "showPopup" && request.text) {
-    selectedText = request.text;
-    const selection = window.getSelection();
-    const range = selection.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
-    createPopup(rect.left + window.scrollX, rect.top + window.scrollY);
-  }
-});
+  return data.choices[0].message.content;
+}
